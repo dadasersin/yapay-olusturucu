@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/components/ui/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,10 +22,12 @@ import {
 
 const AIAssistant = () => {
   const [message, setMessage] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const { toast } = useToast();
   const [chatHistory, setChatHistory] = useState([
     {
       type: "assistant",
-      content: "Merhaba! Ben sizin AI asistanınızım. Kod analizi, strateji oluşturma, soru cevap ve daha fazlası için buradayım. Size nasıl yardımcı olabilirim?",
+      content: "Merhaba! Ben sizin gerçek AI asistanınızım. Kod analizi, kripto strateji geliştirme, web araştırması ve problem çözme konularında size yardımcı olabilirim. Size nasıl yardımcı olabilirim?",
       timestamp: new Date().toLocaleTimeString('tr-TR')
     }
   ]);
@@ -44,8 +48,8 @@ const AIAssistant = () => {
     { title: "Problem Çözme", desc: "Karmaşık problemleri adım adım çözerim", icon: Lightbulb },
   ];
 
-  const handleSendMessage = () => {
-    if (!message.trim()) return;
+  const handleSendMessage = async () => {
+    if (!message.trim() || isLoading) return;
 
     const userMessage = {
       type: "user",
@@ -53,14 +57,48 @@ const AIAssistant = () => {
       timestamp: new Date().toLocaleTimeString('tr-TR')
     };
 
-    const assistantResponse = {
-      type: "assistant", 
-      content: "Bu özellik henüz geliştirme aşamasında. Gerçek AI entegrasyonu için backend bağlantısı gerekiyor. Şu an için demo modunda çalışıyorum.",
-      timestamp: new Date().toLocaleTimeString('tr-TR')
-    };
-
-    setChatHistory([...chatHistory, userMessage, assistantResponse]);
+    // Add user message immediately
+    setChatHistory(prev => [...prev, userMessage]);
+    const currentMessage = message;
     setMessage("");
+    setIsLoading(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('ai-chat', {
+        body: { message: currentMessage }
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      const assistantResponse = {
+        type: "assistant",
+        content: data.response,
+        timestamp: new Date().toLocaleTimeString('tr-TR')
+      };
+
+      setChatHistory(prev => [...prev, assistantResponse]);
+
+    } catch (error) {
+      console.error('AI chat error:', error);
+      
+      const errorResponse = {
+        type: "assistant",
+        content: "Üzgünüm, bir hata oluştu. Lütfen tekrar deneyin veya daha sonra tekrar kontrol edin.",
+        timestamp: new Date().toLocaleTimeString('tr-TR')
+      };
+
+      setChatHistory(prev => [...prev, errorResponse]);
+      
+      toast({
+        title: "Hata",
+        description: "AI asistanına ulaşılamadı. Lütfen tekrar deneyin.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleQuickPrompt = (prompt: string) => {
@@ -126,8 +164,16 @@ const AIAssistant = () => {
                     onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
                     className="bg-input border-border text-foreground"
                   />
-                  <Button onClick={handleSendMessage} className="bg-gradient-primary text-primary-foreground hover:shadow-glow-primary">
-                    <Send className="w-4 h-4" />
+                  <Button 
+                    onClick={handleSendMessage} 
+                    disabled={isLoading}
+                    className="bg-gradient-primary text-primary-foreground hover:shadow-glow-primary disabled:opacity-50"
+                  >
+                    {isLoading ? (
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <Send className="w-4 h-4" />
+                    )}
                   </Button>
                 </div>
               </CardContent>
@@ -209,7 +255,7 @@ const AIAssistant = () => {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Durum:</span>
-                    <Badge variant="outline" className="text-xs">Demo</Badge>
+                    <Badge variant="default" className="text-xs bg-green-500 text-white">Aktif</Badge>
                   </div>
                 </div>
               </CardContent>
